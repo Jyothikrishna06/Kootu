@@ -388,6 +388,13 @@ let S = {
     branch: "", year: "", gender: "", skills: [], qual: "", ach: [],
     linkedin: "", photo: "", bio: "", capacity: 2
   },
+  juniorProfile: {
+    branch: "Computer Science",
+    year: "1st Year",
+    skills: [],
+    bio: "",
+    photo: ""
+  },
   deck: [],
   allDeck: [],
   idx: 0,
@@ -434,7 +441,8 @@ function saveMeLS() {
       name: S.name,
       college: S.college,
       role: S.role,
-      profile: S.mentorProfile
+      profile: S.mentorProfile,
+      juniorProfile: S.juniorProfile
     }));
   } catch (e) {}
 }
@@ -1236,20 +1244,40 @@ async function loadMentees() {
     el.innerHTML = emptyMenteeCard(`When juniors from ${esc(S.college || "your college")} connect with you, they will appear here.`);
     return;
   }
-  el.innerHTML = rows.map(r => `
+
+  const jrMap = {};
+  if (DB) {
+    try {
+      const { data: jrRows } = await DB.from("juniors").select("email, photo, branch, year");
+      (jrRows || []).forEach(j => { jrMap[j.email] = j; });
+    } catch(e) {}
+  }
+
+  el.innerHTML = rows.map(r => {
+    const jData = jrMap[r.junior_email] || {};
+    const photo = jData.photo;
+    const subText = (jData.branch && jData.year)
+      ? `${esc(jData.branch)} · ${esc(jData.year)} · ${esc(r.junior_email || "")}`
+      : esc(r.junior_email || "");
+    const avatarHtml = photo
+      ? `<div class="avatar" style="background-image:url('${esc(photo)}');border:2px solid #2b2b2b"></div>`
+      : `<div class="avatar" style="background:var(--lav-soft);display:grid;place-items:center;font-size:22px">🎓</div>`;
+
+    return `
     <div class="profcard" style="margin-top:10px">
       <div class="row">
-        <div class="avatar" style="background:var(--lav-soft);display:grid;place-items:center;font-size:22px">🎓</div>
+        ${avatarHtml}
         <div style="flex:1">
           <div style="font-weight:800">${esc(r.junior_name || "Junior")}</div>
-          <div class="muted" style="font-size:13px">${esc(r.junior_email || "")}</div>
+          <div class="muted" style="font-size:13px">${subText}</div>
         </div>
       </div>
       <div class="mentee-actions">
         <button class="btn btn-sm btn-sm-primary" onclick="openMentorChat(${r.id}, '${esc(r.junior_name)}', '${esc(r.junior_email)}')">💬 Chat</button>
         <button class="btn btn-sm btn-sm-ghost" onclick="confirmEndMentorship(${r.id})">End mentorship</button>
       </div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
 function emptyMenteeCard(msg) {
@@ -1399,8 +1427,9 @@ reg("jHome", `
   <button class="fab yes" onclick="swipe(true)">♥</button>
 </div>
 <div class="tabbar">
-  <div class="tab on"><span class="i">🔥</span>Discover</div>
+  <div class="tab on" onclick="show('jHome')"><span class="i">🔥</span>Discover</div>
   <div class="tab" onclick="show('jMatch')"><span class="i">💬</span>My mentor</div>
+  <div class="tab" onclick="show('jProfile')"><span class="i">👤</span>My Profile</div>
 </div>`);
 
 renderers["jHome"] = () => {
@@ -1614,7 +1643,8 @@ reg("jMatch", `
 <div id="jChatBar"></div>
 <div class="tabbar">
   <div class="tab" onclick="show('jHome')"><span class="i">🔥</span>Discover</div>
-  <div class="tab on"><span class="i">💬</span>My mentor</div>
+  <div class="tab on" onclick="show('jMatch')"><span class="i">💬</span>My mentor</div>
+  <div class="tab" onclick="show('jProfile')"><span class="i">👤</span>My Profile</div>
 </div>`);
 
 renderers["jMatch"] = async () => {
@@ -1732,6 +1762,151 @@ async function unmatch() {
   show("jHome");
 }
 
+/* 13. Junior Profile Screen */
+reg("jProfile", `
+<div class="topbar"><span class="t">My Profile 🎓</span><span class="iconbtn" title="Log out" onclick="logout()">⎋</span></div>
+<div class="pad" id="jProfileBody"></div>
+<div class="tabbar">
+  <div class="tab" onclick="show('jHome')"><span class="i">🔥</span>Discover</div>
+  <div class="tab" onclick="show('jMatch')"><span class="i">💬</span>My mentor</div>
+  <div class="tab on" onclick="show('jProfile')"><span class="i">👤</span>My Profile</div>
+</div>`);
+
+renderers["jProfile"] = () => {
+  const jp = S.juniorProfile || {};
+  document.getElementById("jProfileBody").innerHTML = `
+    <div class="banner">📍 ${esc(S.college)} · 🎓 Junior Account</div>
+    <div class="profcard">
+      <div class="row">
+        <div class="avatar editable" onclick="changeJuniorPhoto()" style="${jp.photo ? `background-image:url('${esc(jp.photo)}')` : `background:linear-gradient(135deg,var(--pink),var(--primary));display:grid;place-items:center;color:#fff;font-size:24px`}">${jp.photo ? "" : (esc(S.name[0]) || "J").toUpperCase()}<span class="cam-badge">📷</span></div>
+        <div style="flex:1">
+          <div style="font-weight:800;font-size:18px">${esc(S.name)}</div>
+          <div class="muted" style="font-size:13px">${esc(jp.branch || "Student")} · ${esc(jp.year || "1st Year")}</div>
+          <div class="muted" style="font-size:12px;margin-top:2px">${esc(S.email)}</div>
+        </div>
+      </div>
+      <div class="pill-list" style="margin-top:10px">${(jp.skills || []).map(s => `<span class="tag">${esc(s)}</span>`).join("")}</div>
+    </div>
+
+    <h3 style="margin:22px 0 6px">Edit Profile Details</h3>
+    <p class="muted" style="margin:0 0 12px;font-size:13px">Tap the photo above to upload your picture 📷</p>
+
+    <label class="fld">Full name</label>
+    <input id="jEditName" value="${esc(S.name)}">
+
+    <div class="grid2">
+      <div>
+        <label class="fld">Branch</label>
+        <select id="jEditBranch"></select>
+      </div>
+      <div>
+        <label class="fld">Year</label>
+        <select id="jEditYear">
+          <option>1st Year</option>
+          <option>2nd Year</option>
+          <option>3rd Year</option>
+        </select>
+      </div>
+    </div>
+
+    <label class="fld">What topics do you want guidance on?</label>
+    <div class="chips" id="jEditSkills"></div>
+
+    <label class="fld">About you / Goals</label>
+    <textarea id="jEditBio" rows="4" placeholder="Share what you are curious about, your goals, or what guidance you need...">${esc(jp.bio || "")}</textarea>
+
+    <button class="btn btn-primary" id="btnSaveJunior" style="margin-top:20px" onclick="saveJuniorProfile()">Save Profile Changes</button>
+    <button class="btn btn-ghost" style="margin:12px 0 30px" onclick="logout()">Log out</button>
+  `;
+
+  const b = document.getElementById("jEditBranch");
+  BRANCHES.forEach(x => {
+    const opt = new Option(x, x);
+    if (x === jp.branch) opt.selected = true;
+    b.add(opt);
+  });
+  if (jp.year) document.getElementById("jEditYear").value = jp.year;
+
+  const sk = document.getElementById("jEditSkills");
+  const selectedSkills = new Set(jp.skills || []);
+  SKILL_BANK.forEach(s => {
+    const c = document.createElement("span");
+    c.className = "chip" + (selectedSkills.has(s) ? " on" : "");
+    c.textContent = s;
+    c.onclick = () => c.classList.toggle("on");
+    sk.appendChild(c);
+  });
+};
+
+function changeJuniorPhoto() {
+  const inp = document.getElementById("homePhotoInput");
+  inp.onchange = async e => {
+    const file = e.target.files && e.target.files[0];
+    readFileToCropper(file, async data => {
+      const finalUrl = await uploadPhotoIfPossible(data, S.email);
+      if (!S.juniorProfile) S.juniorProfile = {};
+      S.juniorProfile.photo = finalUrl;
+      saveMeLS();
+      if (renderers["jProfile"]) renderers["jProfile"]();
+      if (DB) {
+        await dbUpdateJuniorPassword(S.email, btoa(finalUrl)); // also updates junior
+        try {
+          await DB.from("juniors").update({ photo: finalUrl }).eq("email", S.email);
+        } catch(err) {}
+      }
+      toast("📷 Profile photo updated!");
+    });
+    e.target.value = "";
+  };
+  inp.click();
+}
+
+async function saveJuniorProfile() {
+  const newName = (document.getElementById("jEditName").value || "").trim();
+  const branch = document.getElementById("jEditBranch").value;
+  const year = document.getElementById("jEditYear").value;
+  const bio = (document.getElementById("jEditBio").value || "").trim();
+  const chosenSkills = [...document.querySelectorAll("#jEditSkills .chip.on")].map(c => c.textContent);
+
+  if (newName) S.name = newName;
+  if (!S.juniorProfile) S.juniorProfile = {};
+  S.juniorProfile.branch = branch;
+  S.juniorProfile.year = year;
+  S.juniorProfile.bio = bio;
+  S.juniorProfile.skills = chosenSkills;
+
+  const btn = document.getElementById("btnSaveJunior");
+  btn.disabled = true;
+  btn.textContent = "Saving...";
+
+  saveMeLS();
+
+  if (DB) {
+    try {
+      await dbAddJunior({
+        name: S.name,
+        email: S.email,
+        college: S.college,
+        branch: branch,
+        year: year,
+        bio: bio,
+        skills: chosenSkills,
+        photo: S.juniorProfile.photo || ""
+      });
+      if (S.matchId) {
+        await DB.from("matches").update({ junior_name: S.name }).eq("id", S.matchId);
+      }
+    } catch (e) {
+      console.warn("Junior profile save error:", e);
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = "Save Profile Changes";
+  toast("✅ Profile updated!");
+  if (renderers["jProfile"]) renderers["jProfile"]();
+}
+
 /* ============ SESSION & LOGOUT ============ */
 function logout() {
   try {
@@ -1743,6 +1918,7 @@ function logout() {
   S = {
     role: null, authMode: "login", college: null, name: "Guest", email: "",
     mentorProfile: { branch: "", year: "", gender: "", skills: [], qual: "", ach: [], linkedin: "", photo: "", bio: "", capacity: 2 },
+    juniorProfile: { branch: "Computer Science", year: "1st Year", skills: [], bio: "", photo: "" },
     deck: [], allDeck: [], idx: 0, matched: null, matchedAt: null, matchId: null, activeMentee: null, chat: []
   };
   show("welcome");
@@ -1762,6 +1938,7 @@ function autoResume() {
       show("mHome");
       return true;
     } else if (me.role === "junior") {
+      if (me.juniorProfile) S.juniorProfile = me.juniorProfile;
       restoreJuniorMatch().then(() => {
         buildDeck().then(() => show("jHome"));
       });
