@@ -75,11 +75,22 @@ create table if not exists messages (
   created_at timestamptz default now()
 );
 
+-- 5. Juniors (store profiles and credentials in the cloud)
+create table if not exists juniors (
+  id bigint generated always as identity primary key,
+  name text not null,
+  email text unique not null,
+  college text not null,
+  pass_hash text,
+  created_at timestamptz default now()
+);
+
 -- Enable Row Level Security
 alter table colleges enable row level security;
 alter table mentors  enable row level security;
 alter table matches  enable row level security;
 alter table messages enable row level security;
+alter table juniors  enable row level security;
 
 -- Policies for public campus access
 create policy "allow select colleges" on colleges for select using (true);
@@ -95,6 +106,10 @@ create policy "allow update matches"  on matches  for update using (true);
 
 create policy "allow select messages" on messages for select using (true);
 create policy "allow insert messages" on messages for insert with check (true);
+
+create policy "allow select juniors"  on juniors  for select using (true);
+create policy "allow insert juniors"  on juniors  for insert with check (true);
+create policy "allow update juniors"  on juniors  for update using (true);
 ```
 
 You should see **"Success. No rows returned."**

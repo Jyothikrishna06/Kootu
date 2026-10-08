@@ -150,6 +150,33 @@ async function uploadPhotoIfPossible(dataUrl, userEmail) {
   return dataUrl;
 }
 
+/* ---- Juniors ---- */
+async function dbAddJunior(j) {
+  if (!DB) return null;
+  try {
+    const { data, error } = await DB.from("juniors").upsert(j, { onConflict: "email" }).select().single();
+    if (error && error.code !== "PGRST205") console.warn("Add junior:", error.message);
+    return data;
+  } catch (e) { return null; }
+}
+
+async function dbGetJuniorByEmail(email) {
+  if (!DB || !email) return null;
+  try {
+    const { data, error } = await DB.from("juniors").select("*").eq("email", email).limit(1);
+    if (error) return null;
+    return (data && data[0]) || null;
+  } catch (e) { return null; }
+}
+
+async function dbUpdateJuniorPassword(email, passHash) {
+  if (!DB || !email) return false;
+  try {
+    const { error } = await DB.from("juniors").update({ pass_hash: passHash }).eq("email", email);
+    return !error;
+  } catch (e) { return false; }
+}
+
 /* ---- Matches ---- */
 async function dbAddMatch(rec) {
   if (!DB) return null;
@@ -612,7 +639,24 @@ ${starSVG("bottom:50px;right:20px;width:34px", "var(--accent)")}
   <label class="fld">Password</label>
   <input id="inPass" type="password" placeholder="At least 6 characters">
   <button class="btn btn-primary" id="btnAuthSubmit" style="margin-top:20px" onclick="doAuth()">Continue</button>
-  <p class="center muted" style="margin-top:16px;font-size:13px">Campus-exclusive & safe. Respectful vibes only. 💜</p>
+  <p class="center" style="margin-top:14px" id="forgotPassLink"><a href="javascript:void(0)" onclick="show('resetPass')" style="color:var(--primary-dark);font-weight:700;font-size:13px;text-decoration:underline">Forgot password? Reset it here 🔑</a></p>
+  <p class="center muted" style="margin-top:14px;font-size:13px">Campus-exclusive & safe. Respectful vibes only. 💜</p>
+</div>`);
+
+reg("resetPass", `
+<div class="topbar"><span class="back" onclick="show('login')">←</span><span class="t">Reset Password</span><span style="width:40px"></span></div>
+${cloudSVG("top:54px;right:-6px;width:60px;opacity:.85")}
+<div class="pad" style="position:relative;z-index:2">
+  <div style="text-align:center;margin:2px 0 10px">${logoHTML(90)}</div>
+  <div class="banner">🔑 Enter your registered email and a new password</div>
+  <label class="fld">College Email</label>
+  <input id="resetEmail" type="email" placeholder="you@college.ac.in">
+  <label class="fld">New Password</label>
+  <input id="resetPass1" type="password" placeholder="At least 6 characters">
+  <label class="fld">Confirm New Password</label>
+  <input id="resetPass2" type="password" placeholder="Re-enter your new password">
+  <button class="btn btn-primary" id="btnResetSubmit" style="margin-top:22px" onclick="doResetPassword()">Save &amp; Log In</button>
+  <button class="btn btn-ghost" style="margin-top:10px" onclick="show('login')">Cancel</button>
 </div>`);
 
 function setAuthMode(mode) {
@@ -622,6 +666,8 @@ function setAuthMode(mode) {
   document.getElementById("nameRow").style.display = mode === "signup" ? "block" : "none";
   document.getElementById("btnAuthSubmit").textContent = mode === "signup" ? "Create Account" : "Sign In";
   document.getElementById("loginT").textContent = mode === "signup" ? "Sign Up" : "Welcome Back";
+  const forgotEl = document.getElementById("forgotPassLink");
+  if (forgotEl) forgotEl.style.display = mode === "login" ? "block" : "none";
 }
 
 renderers["login"] = () => {
@@ -645,6 +691,51 @@ function goReturningLogin() {
 function loginBack() {
   if (S.role) show("role");
   else show("welcome");
+}
+
+async function doResetPassword() {
+  const email = (document.getElementById("resetEmail").value || "").trim().toLowerCase();
+  const p1 = document.getElementById("resetPass1").value || "";
+  const p2 = document.getElementById("resetPass2").value || "";
+
+  if (!email || !validateEmail(email)) { toast("Please enter a valid email address"); return; }
+  if (!p1 || p1.length < 6) { toast("Password must be at least 6 characters"); return; }
+  if (p1 !== p2) { toast("Passwords do not match"); return; }
+
+  const btn = document.getElementById("btnResetSubmit");
+  btn.disabled = true;
+  btn.textContent = "Updating...";
+
+  try {
+    const encoded = btoa(p1);
+    // 1. Update in local storage
+    const users = JSON.parse(localStorage.getItem("kootu_users") || "{}");
+    if (!users[email]) {
+      users[email] = { email, pass: encoded };
+    } else {
+      users[email].pass = encoded;
+    }
+    localStorage.setItem("kootu_users", JSON.stringify(users));
+
+    // 2. Update cloud juniors table
+    await dbUpdateJuniorPassword(email, encoded);
+
+    // 3. Update Supabase Auth if applicable
+    if (DB && DB.auth) {
+      try {
+        await DB.auth.updateUser({ password: p1 });
+      } catch (e) {}
+    }
+
+    toast("✅ Password reset! Logging you in...");
+    S.email = email;
+    await loadReturningProfile(email);
+  } catch (e) {
+    toast("Error: " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Save & Log In";
+  }
 }
 
 async function doAuth() {
@@ -693,23 +784,39 @@ async function doAuth() {
           password: pass
         });
         if (inErr) {
-          // If Supabase auth fails, verify if offline credentials match or warn
           console.warn("Supabase auth warning:", inErr.message);
         }
       }
     }
 
-    // Save offline user credentials
+    // Save offline user credentials & verify
     try {
       const users = JSON.parse(localStorage.getItem("kootu_users") || "{}");
       if (S.authMode === "signup") {
         users[email] = { name: S.name, role: S.role, college: S.college, pass: btoa(pass) };
         localStorage.setItem("kootu_users", JSON.stringify(users));
-      } else if (users[email] && users[email].pass !== btoa(pass)) {
-        toast("Incorrect password for this email");
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Sign In";
-        return;
+        if (S.role === "junior" && DB) {
+          await dbAddJunior({
+            name: S.name,
+            email: S.email,
+            college: S.college,
+            pass_hash: btoa(pass)
+          });
+        }
+      } else if (users[email] && users[email].pass && users[email].pass !== btoa(pass)) {
+        let cloudPassMatch = false;
+        const jrCloud = await dbGetJuniorByEmail(email);
+        if (jrCloud && jrCloud.pass_hash === btoa(pass)) {
+          cloudPassMatch = true;
+          users[email].pass = btoa(pass);
+          localStorage.setItem("kootu_users", JSON.stringify(users));
+        }
+        if (!cloudPassMatch) {
+          toast("Incorrect password. Tap 'Forgot password?' below to reset it.");
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Sign In";
+          return;
+        }
       }
     } catch (e) {}
 
@@ -735,7 +842,7 @@ async function doAuth() {
 }
 
 async function loadReturningProfile(email) {
-  // Check junior match first
+  // 1. Check junior match first
   const matchRow = await dbGetJuniorMatch(email);
   if (matchRow) {
     S.role = "junior";
@@ -755,7 +862,19 @@ async function loadReturningProfile(email) {
     return;
   }
 
-  // Check mentor profile
+  // 2. Check juniors cloud table
+  const jrCloud = await dbGetJuniorByEmail(email);
+  if (jrCloud) {
+    S.role = "junior";
+    S.college = jrCloud.college;
+    S.name = jrCloud.name || "Student";
+    saveMeLS();
+    await buildDeck();
+    show("jHome");
+    return;
+  }
+
+  // 3. Check mentor profile
   const mentor = await dbGetMentorByEmail(email);
   if (mentor) {
     S.role = "mentor";
@@ -779,7 +898,7 @@ async function loadReturningProfile(email) {
     return;
   }
 
-  // Fallback to local storage
+  // 4. Fallback to local storage
   const localMe = loadMeLS();
   if (localMe && localMe.email === email) {
     S.role = localMe.role || "junior";
@@ -794,7 +913,21 @@ async function loadReturningProfile(email) {
     return;
   }
 
-  toast("No profile found. Please create an account to start!");
+  const users = JSON.parse(localStorage.getItem("kootu_users") || "{}");
+  if (users[email]) {
+    S.role = users[email].role || "junior";
+    S.college = users[email].college;
+    S.name = users[email].name || "Student";
+    saveMeLS();
+    if (S.role === "mentor") show("mHome");
+    else {
+      await buildDeck();
+      show("jHome");
+    }
+    return;
+  }
+
+  toast("No account found for that email. Sign up to get started!");
   setAuthMode("signup");
 }
 
