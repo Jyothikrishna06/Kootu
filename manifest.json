@@ -1,0 +1,16 @@
+{
+  "name": "Koottu — Find your campus mentor",
+  "short_name": "Koottu",
+  "description": "Campus-exclusive senior-to-junior mentor matching platform",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#efeae0",
+  "theme_color": "#a78bdb",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
+    }
+  ]
+}

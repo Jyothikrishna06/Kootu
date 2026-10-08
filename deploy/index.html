@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#a78bdb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Koottu — Find your mentor</title>
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="apple-touch-icon" href="logo.png">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app"></div>
+
+<!-- Instagram-style photo cropper -->
+<div id="cropModal" class="crop-overlay">
+  <div class="crop-sheet">
+    <h4>Adjust your photo</h4>
+    <div class="crop-stage" id="cropStage"><img id="cropImg" alt=""><div class="crop-ring"></div></div>
+    <div class="crop-zoom"><span style="font-size:14px">🔍</span><input type="range" id="cropZoom" min="1" max="3" step="0.01" value="1" oninput="cropZoomChange(this.value)"></div>
+    <div class="crop-acts"><button class="btn btn-ghost" onclick="closeCropper()">Cancel</button><button class="btn btn-primary" onclick="applyCrop()">Save</button></div>
+  </div>
+</div>
+<input type="file" id="homePhotoInput" accept="image/*" style="display:none">
+
+<!-- Cloud database (Supabase) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="script.js"></script>
+</body>
+</html>
