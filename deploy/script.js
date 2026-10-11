@@ -296,6 +296,60 @@ function subscribeRealtimeChat(matchId, onNewMsg) {
   }
 }
 
+/* ---- Feedback, Improvements & Issue Reports ---- */
+async function dbAddFeedback(entry) {
+  const rec = {
+    user_name: entry.user_name || "Anonymous",
+    user_email: entry.user_email || "",
+    user_role: entry.user_role || "student",
+    college: entry.college || "",
+    category: entry.category || "Feedback",
+    rating: entry.rating || 5,
+    message: entry.message || "",
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    const localList = JSON.parse(localStorage.getItem("kootu_feedback") || "[]");
+    localList.unshift({ ...rec, id: Date.now() });
+    localStorage.setItem("kootu_feedback", JSON.stringify(localList));
+  } catch (e) {}
+
+  if (!DB) return { ok: true, offline: true };
+
+  try {
+    const { data, error } = await DB.from("feedback").insert(rec).select().single();
+    if (error) {
+      console.warn("Add feedback:", error.message);
+      return { ok: false, reason: error.message };
+    }
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  }
+}
+
+async function dbLoadFeedback(email) {
+  if (!DB) {
+    try {
+      const localList = JSON.parse(localStorage.getItem("kootu_feedback") || "[]");
+      return email ? localList.filter(x => x.user_email === email) : localList.slice(0, 10);
+    } catch (e) { return []; }
+  }
+  try {
+    let q = DB.from("feedback").select("*").order("created_at", { ascending: false }).limit(10);
+    if (email) q = q.eq("user_email", email);
+    const { data, error } = await q;
+    if (error) {
+      const localList = JSON.parse(localStorage.getItem("kootu_feedback") || "[]");
+      return email ? localList.filter(x => x.user_email === email) : localList.slice(0, 10);
+    }
+    return data || [];
+  } catch (e) {
+    return [];
+  }
+}
+
 /* ============ DECOR HELPERS ============ */
 function starSVG(pos, fill) {
   return `<svg class="doodle" style="${pos}" viewBox="0 0 24 24" fill="${fill}" stroke="#2b2b2b" stroke-width="1.5" stroke-linejoin="round">
@@ -1209,8 +1263,9 @@ reg("mHome", `
 <div class="topbar"><span class="t">Mentor Hub 👋</span><span class="iconbtn" title="Log out" onclick="logout()">⎋</span></div>
 <div class="pad" id="mHomeBody"></div>
 <div class="tabbar">
-  <div class="tab on"><span class="i">🏠</span>Home</div>
+  <div class="tab on" onclick="show('mHome')"><span class="i">🏠</span>Home</div>
   <div class="tab" onclick="show('mPreview')"><span class="i">👤</span>Preview Card</div>
+  <div class="tab" onclick="show('feedback')"><span class="i">💡</span>Feedback</div>
 </div>`);
 
 renderers["mHome"] = () => {
@@ -1231,7 +1286,8 @@ renderers["mHome"] = () => {
     <h3 style="margin:22px 0 6px">Your Active Mentees</h3>
     <p class="muted" style="margin:0 0 12px;font-size:13px">Juniors from ${esc(S.college)} you are currently guiding 🌱</p>
     <div id="menteeList"><p class="muted center">Loading mentees…</p></div>
-    <button class="btn btn-ghost" style="margin:26px 0 30px" onclick="logout()">Log out</button>
+    <button class="btn btn-pink" style="margin:24px 0 0" onclick="show('feedback')">💡 Share Feedback / Report Issue</button>
+    <button class="btn btn-ghost" style="margin:12px 0 30px" onclick="logout()">Log out</button>
   `;
   loadMentees();
 };
@@ -1429,7 +1485,8 @@ reg("jHome", `
 <div class="tabbar">
   <div class="tab on" onclick="show('jHome')"><span class="i">🔥</span>Discover</div>
   <div class="tab" onclick="show('jMatch')"><span class="i">💬</span>My mentor</div>
-  <div class="tab" onclick="show('jProfile')"><span class="i">👤</span>My Profile</div>
+  <div class="tab" onclick="show('jProfile')"><span class="i">👤</span>Profile</div>
+  <div class="tab" onclick="show('feedback')"><span class="i">💡</span>Feedback</div>
 </div>`);
 
 renderers["jHome"] = () => {
@@ -1644,7 +1701,8 @@ reg("jMatch", `
 <div class="tabbar">
   <div class="tab" onclick="show('jHome')"><span class="i">🔥</span>Discover</div>
   <div class="tab on" onclick="show('jMatch')"><span class="i">💬</span>My mentor</div>
-  <div class="tab" onclick="show('jProfile')"><span class="i">👤</span>My Profile</div>
+  <div class="tab" onclick="show('jProfile')"><span class="i">👤</span>Profile</div>
+  <div class="tab" onclick="show('feedback')"><span class="i">💡</span>Feedback</div>
 </div>`);
 
 renderers["jMatch"] = async () => {
@@ -1769,7 +1827,8 @@ reg("jProfile", `
 <div class="tabbar">
   <div class="tab" onclick="show('jHome')"><span class="i">🔥</span>Discover</div>
   <div class="tab" onclick="show('jMatch')"><span class="i">💬</span>My mentor</div>
-  <div class="tab on" onclick="show('jProfile')"><span class="i">👤</span>My Profile</div>
+  <div class="tab on" onclick="show('jProfile')"><span class="i">👤</span>Profile</div>
+  <div class="tab" onclick="show('feedback')"><span class="i">💡</span>Feedback</div>
 </div>`);
 
 renderers["jProfile"] = () => {
@@ -1816,6 +1875,7 @@ renderers["jProfile"] = () => {
     <textarea id="jEditBio" rows="4" placeholder="Share what you are curious about, your goals, or what guidance you need...">${esc(jp.bio || "")}</textarea>
 
     <button class="btn btn-primary" id="btnSaveJunior" style="margin-top:20px" onclick="saveJuniorProfile()">Save Profile Changes</button>
+    <button class="btn btn-pink" style="margin-top:12px" onclick="show('feedback')">💡 Share Feedback / Report Issue</button>
     <button class="btn btn-ghost" style="margin:12px 0 30px" onclick="logout()">Log out</button>
   `;
 
@@ -1849,7 +1909,6 @@ function changeJuniorPhoto() {
       saveMeLS();
       if (renderers["jProfile"]) renderers["jProfile"]();
       if (DB) {
-        await dbUpdateJuniorPassword(S.email, btoa(finalUrl)); // also updates junior
         try {
           await DB.from("juniors").update({ photo: finalUrl }).eq("email", S.email);
         } catch(err) {}
@@ -1905,6 +1964,163 @@ async function saveJuniorProfile() {
   btn.textContent = "Save Profile Changes";
   toast("✅ Profile updated!");
   if (renderers["jProfile"]) renderers["jProfile"]();
+}
+
+/* 14. Feedback, Improvement Recommendations & Issue Reporting (Both Juniors & Seniors) */
+let _fbCategory = "Feedback";
+let _fbRating = 5;
+
+reg("feedback", `
+<div class="topbar">
+  <span class="back" onclick="feedbackBack()">←</span>
+  <span class="t">Feedback &amp; Ideas 💡</span>
+  <span class="iconbtn" title="Log out" onclick="logout()">⎋</span>
+</div>
+<div class="pad" id="feedbackBody" style="flex:1"></div>
+<div class="tabbar" id="feedbackTabbar"></div>`);
+
+function feedbackBack() {
+  if (S.role === "mentor") show("mHome");
+  else if (S.role === "junior") show("jHome");
+  else show("welcome");
+}
+
+function setFbCategory(cat) {
+  _fbCategory = cat;
+  document.querySelectorAll("#fbCatChips .chip").forEach(c => {
+    c.classList.toggle("on", c.dataset.cat === cat);
+  });
+  const ta = document.getElementById("fbMessage");
+  if (ta) {
+    if (cat === "Feedback") ta.placeholder = "Share what you love about Koottu or your mentorship experience... 💜";
+    else if (cat === "Improvement") ta.placeholder = "Suggest a new feature or how we can make Koottu better for your campus... 🚀";
+    else ta.placeholder = "Describe the bug or issue you faced and which screen it happened on... 🐞";
+  }
+}
+
+function setFbRating(val) {
+  _fbRating = val;
+  document.querySelectorAll("#fbStars span").forEach((s, idx) => {
+    s.textContent = idx < val ? "⭐" : "☆";
+    s.style.opacity = idx < val ? "1" : "0.4";
+  });
+}
+
+renderers["feedback"] = async () => {
+  _fbCategory = "Feedback";
+  _fbRating = 5;
+
+  const tabbar = document.getElementById("feedbackTabbar");
+  if (S.role === "mentor") {
+    tabbar.innerHTML = `
+      <div class="tab" onclick="show('mHome')"><span class="i">🏠</span>Home</div>
+      <div class="tab" onclick="show('mPreview')"><span class="i">👤</span>Preview Card</div>
+      <div class="tab on" onclick="show('feedback')"><span class="i">💡</span>Feedback</div>
+    `;
+  } else {
+    tabbar.innerHTML = `
+      <div class="tab" onclick="show('jHome')"><span class="i">🔥</span>Discover</div>
+      <div class="tab" onclick="show('jMatch')"><span class="i">💬</span>My mentor</div>
+      <div class="tab" onclick="show('jProfile')"><span class="i">👤</span>Profile</div>
+      <div class="tab on" onclick="show('feedback')"><span class="i">💡</span>Feedback</div>
+    `;
+  }
+
+  const roleBadge = S.role === "mentor" ? "🧑‍🏫 Senior Mentor" : "🎓 Junior";
+  document.getElementById("feedbackBody").innerHTML = `
+    <div class="banner">📍 ${esc(S.college || "Campus")} · ${roleBadge} · ${esc(S.name)}</div>
+
+    <div class="profcard" style="margin-top:14px">
+      <h3 style="font-size:17px;margin-bottom:4px">Help us improve Koottu 🌱</h3>
+      <p class="muted" style="font-size:13px;margin:0 0 12px">Share your experience, recommend new features, or report any issues.</p>
+
+      <label class="fld">What would you like to share?</label>
+      <div class="chips" id="fbCatChips">
+        <span class="chip on" data-cat="Feedback" onclick="setFbCategory('Feedback')">💜 Feedback</span>
+        <span class="chip" data-cat="Improvement" onclick="setFbCategory('Improvement')">🚀 Improvement</span>
+        <span class="chip" data-cat="Issue" onclick="setFbCategory('Issue')">🐞 Report Issue</span>
+      </div>
+
+      <label class="fld" style="margin-top:16px">How would you rate your experience?</label>
+      <div id="fbStars" style="display:flex;gap:10px;font-size:28px;cursor:pointer;user-select:none;margin-top:4px">
+        <span onclick="setFbRating(1)">⭐</span>
+        <span onclick="setFbRating(2)">⭐</span>
+        <span onclick="setFbRating(3)">⭐</span>
+        <span onclick="setFbRating(4)">⭐</span>
+        <span onclick="setFbRating(5)">⭐</span>
+      </div>
+
+      <label class="fld" style="margin-top:16px">Your Message / Recommendation</label>
+      <textarea id="fbMessage" rows="4" placeholder="Share what you love about Koottu or your mentorship experience... 💜"></textarea>
+
+      <button class="btn btn-primary" id="btnSubmitFeedback" style="margin-top:16px" onclick="submitFeedback()">Submit Feedback ✨</button>
+    </div>
+
+    <h3 style="margin:24px 0 8px">Your Previous Submissions</h3>
+    <div id="myFeedbackList" style="margin-bottom:24px"><p class="muted center">Loading…</p></div>
+  `;
+
+  loadUserFeedbackHistory();
+};
+
+async function loadUserFeedbackHistory() {
+  const listEl = document.getElementById("myFeedbackList");
+  if (!listEl) return;
+  const rows = await dbLoadFeedback(S.email);
+  if (!rows.length) {
+    listEl.innerHTML = `<div class="profcard" style="text-align:center;padding:18px"><div class="muted" style="font-size:13px">No feedback submitted yet. Your thoughts help us grow! 🌸</div></div>`;
+    return;
+  }
+  listEl.innerHTML = rows.map(r => {
+    const icon = r.category === "Improvement" ? "🚀" : (r.category === "Issue" ? "🐞" : "💜");
+    const dateStr = r.created_at ? new Date(r.created_at).toLocaleDateString() : "";
+    const stars = "⭐".repeat(Math.min(5, Math.max(1, r.rating || 5)));
+    return `
+      <div class="profcard" style="margin-top:10px;padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="tag">${icon} ${esc(r.category || "Feedback")}</span>
+          <span style="font-size:12px">${stars}</span>
+        </div>
+        <div style="font-size:14px;margin-top:8px;line-height:1.45">${esc(r.message)}</div>
+        <div class="muted" style="font-size:11px;margin-top:6px;text-align:right">${esc(dateStr)}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function submitFeedback() {
+  const msgEl = document.getElementById("fbMessage");
+  const text = (msgEl.value || "").trim();
+  if (!text) {
+    toast("Please write your feedback or issue details");
+    return;
+  }
+
+  const btn = document.getElementById("btnSubmitFeedback");
+  btn.disabled = true;
+  btn.textContent = "Submitting...";
+
+  const res = await dbAddFeedback({
+    user_name: S.name || "Student",
+    user_email: S.email || "",
+    user_role: S.role || "student",
+    college: S.college || "",
+    category: _fbCategory,
+    rating: _fbRating,
+    message: text
+  });
+
+  msgEl.value = "";
+  btn.disabled = false;
+  btn.textContent = "Submit Feedback ✨";
+
+  if (res && res.ok) {
+    toast("🎉 Thank you! Your feedback was saved.");
+  } else {
+    toast("✅ Saved locally! Thank you for your feedback.");
+  }
+
+  loadUserFeedbackHistory();
 }
 
 /* ============ SESSION & LOGOUT ============ */

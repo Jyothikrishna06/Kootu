@@ -75,13 +75,30 @@ create table if not exists messages (
   created_at timestamptz default now()
 );
 
--- 5. Juniors (store profiles and credentials in the cloud)
+-- 5. Juniors (store profiles, photos, and credentials in the cloud)
 create table if not exists juniors (
   id bigint generated always as identity primary key,
   name text not null,
   email text unique not null,
   college text not null,
+  branch text,
+  year text,
+  bio text,
+  photo text,
   pass_hash text,
+  created_at timestamptz default now()
+);
+
+-- 6. Feedback, Improvements & Issue Reports (from Juniors & Mentors)
+create table if not exists feedback (
+  id bigint generated always as identity primary key,
+  user_name text not null,
+  user_email text not null,
+  user_role text not null, -- 'junior' | 'mentor'
+  college text,
+  category text not null,  -- 'feedback' | 'improvement' | 'issue'
+  rating int default 5,
+  message text not null,
   created_at timestamptz default now()
 );
 
@@ -91,6 +108,7 @@ alter table mentors  enable row level security;
 alter table matches  enable row level security;
 alter table messages enable row level security;
 alter table juniors  enable row level security;
+alter table feedback enable row level security;
 
 -- Policies for public campus access
 create policy "allow select colleges" on colleges for select using (true);
@@ -110,6 +128,18 @@ create policy "allow insert messages" on messages for insert with check (true);
 create policy "allow select juniors"  on juniors  for select using (true);
 create policy "allow insert juniors"  on juniors  for insert with check (true);
 create policy "allow update juniors"  on juniors  for update using (true);
+
+create policy "allow select feedback" on feedback for select using (true);
+create policy "allow insert feedback" on feedback for insert with check (true);
+
+-- Grant table permissions to Supabase API roles
+grant all on public.colleges to postgres, anon, authenticated, service_role;
+grant all on public.mentors  to postgres, anon, authenticated, service_role;
+grant all on public.matches  to postgres, anon, authenticated, service_role;
+grant all on public.messages to postgres, anon, authenticated, service_role;
+grant all on public.juniors  to postgres, anon, authenticated, service_role;
+grant all on public.feedback to postgres, anon, authenticated, service_role;
+grant usage, select on all sequences in schema public to anon, authenticated;
 ```
 
 You should see **"Success. No rows returned."**
